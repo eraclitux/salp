@@ -18,6 +18,8 @@ const (
 	GreetAction
 	InternetOnFireAction
 	ReminderAction
+	RemindMeFormat       = "`remind me to <thing to do> in <dd> minutes`"
+	InternetOnFireFormat = "`is internet on fire`"
 )
 
 // ServeRTM deals with realtime messages from Slack.
@@ -124,7 +126,7 @@ func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
 		switch action {
 		case GreetAction:
 			greeting := Greetings[rand.Intn(len(Greetings))]
-			text += fmt.Sprintf("%s <@%s> :-)\n", greeting, ev.User)
+			text += fmt.Sprintf("%s <@%s> :smile:\n", greeting, ev.User)
 		case InternetOnFireAction:
 			text += fmt.Sprintf("%s\n", getSecInfo())
 		case ReminderAction:
@@ -137,7 +139,12 @@ func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
 	}
 	strings.Trim(text, "\n")
 	if len(actions) == 0 {
-		text = fmt.Sprintf("I'm not that smart <@%s> :-(", ev.User)
+		text = fmt.Sprintf(
+			"I'm not that smart <@%s> :white_frowning_face:, you can ask me:\n%s\n%s",
+			ev.User,
+			InternetOnFireFormat,
+			RemindMeFormat,
+		)
 	}
 	rtm.SendMessage(
 		rtm.NewOutgoingMessage(text, ev.Channel),

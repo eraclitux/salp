@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/eraclitux/stracer"
 	"github.com/nlopes/slack"
@@ -67,6 +69,47 @@ func getSecInfo() string {
 }
 
 func scheduleReminder(ev *slack.MessageEvent, rtm *slack.RTM) string {
-	// FIXME are concurrency-safe?
-	return "unable to decode reminder :-("
+	var toIndex, inIndex int
+	var thingToDo string
+	var minutes int
+	errorMesage := "unable to decode reminder :white_frowning_face:\n" +
+		"please use the form " +
+		RemindMeFormat
+	terms := strings.Fields(ev.Text)
+	for i, term := range terms {
+		switch term {
+		case "to":
+			// consider only the first
+			if toIndex == 0 {
+				toIndex = i
+			}
+		case "in":
+			inIndex = i
+		}
+	}
+	if toIndex+1 < inIndex {
+		for _, term := range terms[toIndex+1 : inIndex] {
+			thingToDo += term + " "
+		}
+	} else {
+		return errorMesage
+	}
+	if inIndex+1 < len(terms) {
+		var err error
+		minutes, err = strconv.Atoi(terms[inIndex+1])
+		if err != nil {
+			return errorMesage
+		}
+	} else {
+		return errorMesage
+	}
+	text := fmt.Sprintf("<@%s> remember to %s:robot_face:", ev.User, thingToDo)
+	// FIXME is rtm concurrency-safe?
+	go func() {
+		time.Sleep(time.Duration(minutes) * time.Minute)
+		rtm.SendMessage(
+			rtm.NewOutgoingMessage(text, ev.Channel),
+		)
+	}()
+	return fmt.Sprintf("ok, I'll remind you in %d minutes :robot_face:", minutes)
 }
