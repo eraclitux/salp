@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/eraclitux/stracer"
+	"github.com/nlopes/slack"
 )
 
 func AmIMentioned(msg, myID string) bool {
@@ -63,4 +64,9 @@ func getSecInfo() string {
 		data["date"],
 		"https://istheinternetonfire.com/",
 	)
+}
+
+func scheduleReminder(ev *slack.MessageEvent, rtm *slack.RTM) string {
+	// FIXME are concurrency-safe?
+	return "unable to decode reminder :-("
 }

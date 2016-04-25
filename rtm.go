@@ -17,6 +17,7 @@ const (
 	UnknownAction = iota
 	GreetAction
 	InternetOnFireAction
+	ReminderAction
 )
 
 // ServeRTM deals with realtime messages from Slack.
@@ -118,7 +119,7 @@ func ParseMessage(ev *slack.MessageEvent, rtm *slack.RTM, slackInfo *slack.Info)
 
 func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
 	var text string
-	actions := GetActions(ev.Text)
+	actions := GuessActions(ev.Text)
 	for _, action := range actions {
 		switch action {
 		case GreetAction:
@@ -126,6 +127,11 @@ func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
 			text += fmt.Sprintf("%s <@%s> :-)\n", greeting, ev.User)
 		case InternetOnFireAction:
 			text += fmt.Sprintf("%s\n", getSecInfo())
+		case ReminderAction:
+			text += fmt.Sprintf(
+				"%s\n",
+				scheduleReminder(ev, rtm),
+			)
 		default:
 		}
 	}
@@ -138,7 +144,7 @@ func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
 	)
 }
 
-func GetActions(msg string) []int {
+func GuessActions(msg string) []int {
 	actions := []int{}
 	for _, word := range strings.Fields(msg) {
 		for _, greeting := range Greetings {
@@ -149,6 +155,10 @@ func GetActions(msg string) []int {
 	}
 	if strings.Contains(msg, "is internet on fire") {
 		actions = append(actions, InternetOnFireAction)
+	}
+
+	if strings.Contains(msg, "remind me to") {
+		actions = append(actions, ReminderAction)
 	}
 	stracer.Traceln(actions)
 	return actions
