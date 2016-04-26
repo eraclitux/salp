@@ -14,6 +14,7 @@ What can it do
 ==============
 
 - intercept **GitHub** ``push`` webhooks and send a digest to its channels of them
+- receive json messages on ``/message`` via authenticated POST and echoes them to Slack
 - fetch https://istheinternetonfire.com/ when asked
 
 Setup GitHub webhooks

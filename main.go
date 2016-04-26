@@ -22,7 +22,8 @@ import (
 type DaemonConf struct {
 	Httpport    string
 	Httpaddress string
-	APITocken   string `cfgp:",Slack API tocken,"`
+	SlackToken  string `cfgp:",Slack API token,"`
+	AuthToken   string `cfgp:",token to authorize http requests,"`
 	Version     bool   `cfgp:"v,show version and exit,"`
 }
 
@@ -40,7 +41,8 @@ func main() {
 
 	var conf DaemonConf
 	conf = DaemonConf{
-		Httpport: "8080",
+		Httpport:  "8080",
+		AuthToken: randomString(8),
 	}
 	err := cfgp.Parse(&conf)
 	if err != nil {
@@ -50,7 +52,7 @@ func main() {
 	badExitCode := false
 	SetupLoggers(os.Stdout, os.Stderr)
 
-	api := slack.New(conf.APITocken)
+	api := slack.New(conf.SlackToken)
 	rtm := api.NewRTM()
 	go rtm.ManageConnection()
 
@@ -60,6 +62,13 @@ func main() {
 	http.HandleFunc(
 		"/gh-webhooks",
 		GHWebhooksHandlerFunc(rtm.IncomingEvents),
+	)
+	http.HandleFunc(
+		"/message",
+		MustAuth(
+			conf.AuthToken,
+			GenericMessageHandler(rtm.IncomingEvents),
+		),
 	)
 	addrString := fmt.Sprintf("%s:%s", conf.Httpaddress, conf.Httpport)
 	InfoLogger.Println("start listening on:", addrString)

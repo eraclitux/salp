@@ -34,7 +34,6 @@ Loop:
 			stracer.Traceln("Event Received:")
 			switch ev := msg.Data.(type) {
 			case *slack.HelloEvent:
-				// Ignore hello
 
 			case *slack.ConnectedEvent:
 				stracer.PrettyStruct("Infos", ev.Info)
@@ -63,8 +62,10 @@ Loop:
 				break Loop
 
 			case *GHPushEvent:
-				stracer.Tracef("GHWebhook event received")
 				SendPushMessage(ev, rtm)
+
+			case *MessageEvent:
+				SendMessage(ev, rtm)
 
 			default:
 				stracer.PrettyStruct("unknown event:", ev)
@@ -99,6 +100,7 @@ func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
 		commitMessages,
 		pushData.Compare,
 	)
+	// FIXME duplicated code
 	for _, channel := range channels {
 		stracer.PrettyStruct("channel", channel)
 		if channel.IsMember {
@@ -107,6 +109,39 @@ func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
 			)
 		}
 	}
+	// FIXME duplicated code
+	for _, group := range groups {
+		stracer.PrettyStruct("group", group)
+		rtm.SendMessage(
+			rtm.NewOutgoingMessage(text, group.ID),
+		)
+	}
+}
+
+// SendMessage sends generic message received on /message
+//to all channels of which Salp is member.
+func SendMessage(message *MessageEvent, rtm *slack.RTM) {
+	channels, err := rtm.GetChannels(true)
+	if err != nil {
+		ErrorLogger.Println(err)
+		return
+	}
+	groups, err := rtm.GetGroups(true)
+	if err != nil {
+		ErrorLogger.Println(err)
+		return
+	}
+	text := message.Message
+	// FIXME duplicated code
+	for _, channel := range channels {
+		stracer.PrettyStruct("channel", channel)
+		if channel.IsMember {
+			rtm.SendMessage(
+				rtm.NewOutgoingMessage(text, channel.ID),
+			)
+		}
+	}
+	// FIXME duplicated code
 	for _, group := range groups {
 		stracer.PrettyStruct("group", group)
 		rtm.SendMessage(

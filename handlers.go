@@ -6,7 +6,9 @@ package main
 
 import (
 	"encoding/json"
+	"math/rand"
 	"net/http"
+	"time"
 
 	"github.com/eraclitux/stracer"
 	"github.com/nlopes/slack"
@@ -29,6 +31,11 @@ type GHPushEvent struct {
 	Repository map[string]interface{}
 }
 
+type MessageEvent struct {
+	Message string
+	Type    string
+}
+
 // GHWebhooksHandlerFunc deals with webhook events received from GitHub.
 func GHWebhooksHandlerFunc(c chan<- slack.RTMEvent) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -49,8 +56,47 @@ func GHWebhooksHandlerFunc(c chan<- slack.RTMEvent) http.HandlerFunc {
 		stracer.PrettyStruct("GHPushEvent", pushData)
 		// send to RTM channel...
 		c <- slack.RTMEvent{
-			Type: "ghwebhook",
+			//Type: "ghwebhook", FIXME unused?
 			Data: &pushData,
 		}
+	}
+}
+
+// GenericMessageHandler receives a generic JSON message
+// in the form:
+//	{
+//		"message": string,
+//		"type": string
+//	}
+// that echoes back to Slack.
+func GenericMessageHandler(c chan<- slack.RTMEvent) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var message MessageEvent
+		err := json.NewDecoder(r.Body).Decode(&message)
+		if err != nil {
+			ErrorLogger.Println("decoding json body:", err)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		// send to RTM channel...
+		c <- slack.RTMEvent{
+			Data: &message,
+		}
+	}
+}
+
+// MustAuth is a decorator that implements a simple token
+// authentication.
+func MustAuth(authToken string, fn http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		stracer.Traceln(r.Header.Get("Salp-auth"))
+		if r.Header.Get("Salp-Auth") != authToken {
+			time.Sleep(time.Duration(rand.Intn(100)+100) * time.Millisecond)
+			w.Header().Set("WWW-Authenticate", "Basic realm=\"Authorization Required\"")
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			stracer.Traceln("401")
+			return
+		}
+		fn(w, r)
 	}
 }

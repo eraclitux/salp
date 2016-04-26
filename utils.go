@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,4 +113,18 @@ func scheduleReminder(ev *slack.MessageEvent, rtm *slack.RTM) string {
 		)
 	}()
 	return fmt.Sprintf("ok, I'll remind you in %d minutes :robot_face:", minutes)
+}
+
+// randomCharset contains the characters that can make up a randomString().
+const randomCharset = "01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-"
+
+// randomString returns a string of random characters (taken from
+// randomCharset) of the specified length.
+// Taken from syncthing.
+func randomString(l int) string {
+	bs := make([]byte, l)
+	for i := range bs {
+		bs[i] = randomCharset[rand.Intn(len(randomCharset))]
+	}
+	return string(bs)
 }
