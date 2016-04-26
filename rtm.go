@@ -81,6 +81,11 @@ func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
 		ErrorLogger.Println(err)
 		return
 	}
+	groups, err := rtm.GetGroups(true)
+	if err != nil {
+		ErrorLogger.Println(err)
+		return
+	}
 	var commitMessages, lastCommitUsername string
 	for _, commit := range pushData.Commits {
 		lastCommitUsername = commit.Author.Username
@@ -102,6 +107,12 @@ func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
 			)
 		}
 	}
+	for _, group := range groups {
+		stracer.PrettyStruct("group", group)
+		rtm.SendMessage(
+			rtm.NewOutgoingMessage(text, group.ID),
+		)
+	}
 }
 
 func ParseMessage(ev *slack.MessageEvent, rtm *slack.RTM, slackInfo *slack.Info) {
@@ -121,6 +132,8 @@ func ParseMessage(ev *slack.MessageEvent, rtm *slack.RTM, slackInfo *slack.Info)
 
 func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
 	var text string
+	// FIXME create a normalization function
+	ev.Text = strings.ToLower(ev.Text)
 	actions := GuessActions(ev.Text)
 	for _, action := range actions {
 		switch action {
