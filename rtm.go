@@ -88,7 +88,9 @@ func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
 		return
 	}
 	var commitMessages, lastCommitUsername string
-	for _, commit := range pushData.Commits {
+	commits := pushData.Commits
+	for i := len(commits) - 1; i >= 0; i-- {
+		commit := commits[i]
 		lastCommitUsername = commit.Author.Username
 		commitMessages += commit.Message + "\n"
 	}
