@@ -26,7 +26,6 @@ const (
 // It is indended to tun in its own goroutine.
 func ServeRTM(rtm *slack.RTM) {
 	var slackInfo *slack.Info
-	defer wg.Done()
 Loop:
 	for {
 		select {

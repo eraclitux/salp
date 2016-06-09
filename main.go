@@ -57,7 +57,15 @@ func main() {
 	go rtm.ManageConnection()
 
 	wg.Add(1)
-	go ServeRTM(rtm)
+	go func() {
+		defer func() {
+			wg.Done()
+			if r := recover(); r != nil {
+				ErrorLogger.Println(r)
+			}
+		}()
+		ServeRTM(rtm)
+	}()
 
 	http.HandleFunc(
 		"/gh-webhooks",
