@@ -61,6 +61,8 @@ func main() {
 		defer func() {
 			wg.Done()
 			if r := recover(); r != nil {
+				// TODO try a last message sending to Slack via REST
+				// user PostMessage
 				ErrorLogger.Println(r)
 			}
 		}()

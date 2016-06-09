@@ -31,6 +31,7 @@ type GHPushEvent struct {
 	Repository map[string]interface{}
 }
 
+// FIXME rename and make webhook clear
 type MessageEvent struct {
 	Message string
 	Type    string

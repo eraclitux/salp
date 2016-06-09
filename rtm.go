@@ -22,70 +22,73 @@ const (
 	InternetOnFireFormat = "`is internet on fire`"
 )
 
-// ServeRTM deals with realtime messages from Slack.
-// It is indended to tun in its own goroutine.
-func ServeRTM(rtm *slack.RTM) {
-	var slackInfo *slack.Info
-Loop:
-	for {
-		select {
-		case msg := <-rtm.IncomingEvents:
-			stracer.Traceln("Event Received:")
-			switch ev := msg.Data.(type) {
-			case *slack.HelloEvent:
+type Connection struct {
+	SlackInfo *slack.Info
+	RTM       *slack.RTM
+}
 
-			case *slack.ConnectedEvent:
-				stracer.PrettyStruct("Infos", ev.Info)
-				slackInfo = ev.Info
-				stracer.Tracef("UserDetails: %+v\n", slackInfo.User)
-				for _, c := range ev.Info.Channels {
-					stracer.PrettyStruct("channel", c)
-				}
-				stracer.Traceln("Connection counter:", ev.ConnectionCount)
-
-			case *slack.MessageEvent:
-				stracer.PrettyStruct("Message", ev)
-				ParseMessage(ev, rtm, slackInfo)
-
-			case *slack.PresenceChangeEvent:
-				//stracer.Tracef("Presence Change: %v\n", ev)
-
-			case *slack.LatencyReport:
-				stracer.Tracef("Current latency: %v\n", ev.Value)
-
-			case *slack.RTMError:
-				ErrorLogger.Println(ev.Error())
-
-			case *slack.InvalidAuthEvent:
-				ErrorLogger.Println("Invalid credentials")
-				break Loop
-
-			case *GHPushEvent:
-				SendPushMessage(ev, rtm)
-
-			case *MessageEvent:
-				SendMessage(ev, rtm)
-
-			default:
-				stracer.PrettyStruct("unknown event:", ev)
-			}
-		}
+// ParseMessage decodes and executes messages from humans received
+// in Slack channels and groups to which Salp belongs.
+func (c Connection) ParseMessage(ev *slack.MessageEvent) {
+	// discard my own message
+	// that is received when connected
+	myID := c.SlackInfo.User.ID
+	if ev.User == myID {
+		return
+	}
+	if ev.SubType == "message_changed" {
+		return
+	}
+	if AmIMentioned(ev.Text, myID) || IsDirectMessage(ev.Channel) {
+		c.decodeAndExecuteAction(ev)
 	}
 }
 
+// decodeAndExecuteAction deals with Slack messages from humans.
+func (c Connection) decodeAndExecuteAction(ev *slack.MessageEvent) {
+	var text string
+	// FIXME create a normalization function
+	ev.Text = strings.ToLower(ev.Text)
+	actions := GuessActions(ev.Text)
+	for _, action := range actions {
+		switch action {
+		case GreetAction:
+			greeting := Greetings[rand.Intn(len(Greetings))]
+			text += fmt.Sprintf("%s <@%s> :smile:\n", greeting, ev.User)
+		case InternetOnFireAction:
+			text += fmt.Sprintf("%s\n", getSecInfo())
+		case ReminderAction:
+			text += fmt.Sprintf(
+				"%s\n",
+				scheduleReminder(ev, c.RTM),
+			)
+		default:
+		}
+	}
+	strings.Trim(text, "\n")
+	if len(actions) == 0 {
+		text = fmt.Sprintf(
+			"I'm not that smart <@%s> :white_frowning_face:, you can ask me:\n%s\n%s",
+			ev.User,
+			InternetOnFireFormat,
+			RemindMeFormat,
+		)
+	}
+	c.sendSlackMessage(text, ev.Channel)
+}
+
+// SendMessage redirects generic messages received on /message
+// http endpoint to all channels and groups of which Salp is member.
+func (c Connection) SendMessage(message *MessageEvent) {
+	text := message.Message
+	c.toAllChannels(text)
+	c.toAllGroups(text)
+}
+
 // SendPushMessage sends push event data to all channels
-// of which Salp is member.
-func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
-	channels, err := rtm.GetChannels(true)
-	if err != nil {
-		ErrorLogger.Println(err)
-		return
-	}
-	groups, err := rtm.GetGroups(true)
-	if err != nil {
-		ErrorLogger.Println(err)
-		return
-	}
+// and groups of which Salp is member.
+// BUG(eraclitux): discard non push messages
+func (c Connection) SendPushMessage(pushData *GHPushEvent) {
 	var commitMessages, lastCommitUsername string
 	commits := pushData.Commits
 	commitsCount := len(commits)
@@ -104,102 +107,40 @@ func SendPushMessage(pushData *GHPushEvent, rtm *slack.RTM) {
 		commitMessages,
 		pushData.Compare,
 	)
-	// FIXME duplicated code
-	for _, channel := range channels {
-		stracer.PrettyStruct("channel", channel)
-		if channel.IsMember {
-			rtm.SendMessage(
-				rtm.NewOutgoingMessage(text, channel.ID),
-			)
-		}
-	}
-	// FIXME duplicated code
-	for _, group := range groups {
-		stracer.PrettyStruct("group", group)
-		rtm.SendMessage(
-			rtm.NewOutgoingMessage(text, group.ID),
-		)
-	}
+	c.toAllChannels(text)
+	c.toAllGroups(text)
 }
 
-// SendMessage sends generic message received on /message
-//to all channels of which Salp is member.
-func SendMessage(message *MessageEvent, rtm *slack.RTM) {
-	channels, err := rtm.GetChannels(true)
+func (c Connection) toAllGroups(text string) {
+	groups, err := c.RTM.GetGroups(true)
 	if err != nil {
 		ErrorLogger.Println(err)
 		return
 	}
-	groups, err := rtm.GetGroups(true)
+	for _, group := range groups {
+		stracer.PrettyStruct("group", group)
+		c.sendSlackMessage(text, group.ID)
+	}
+}
+
+func (c Connection) toAllChannels(text string) {
+	channels, err := c.RTM.GetChannels(true)
 	if err != nil {
 		ErrorLogger.Println(err)
 		return
 	}
-	text := message.Message
-	// FIXME duplicated code
 	for _, channel := range channels {
 		stracer.PrettyStruct("channel", channel)
 		if channel.IsMember {
-			rtm.SendMessage(
-				rtm.NewOutgoingMessage(text, channel.ID),
-			)
+			c.sendSlackMessage(text, channel.ID)
 		}
-	}
-	// FIXME duplicated code
-	for _, group := range groups {
-		stracer.PrettyStruct("group", group)
-		rtm.SendMessage(
-			rtm.NewOutgoingMessage(text, group.ID),
-		)
 	}
 }
 
-func ParseMessage(ev *slack.MessageEvent, rtm *slack.RTM, slackInfo *slack.Info) {
-	// discard my own message
-	// that is received when connected
-	myID := slackInfo.User.ID
-	if ev.User == myID {
-		return
-	}
-	if ev.SubType == "message_changed" {
-		return
-	}
-	if AmIMentioned(ev.Text, myID) || IsDirectMessage(ev.Channel) {
-		DecodeAndExecuteAction(ev, rtm)
-	}
-}
-
-func DecodeAndExecuteAction(ev *slack.MessageEvent, rtm *slack.RTM) {
-	var text string
-	// FIXME create a normalization function
-	ev.Text = strings.ToLower(ev.Text)
-	actions := GuessActions(ev.Text)
-	for _, action := range actions {
-		switch action {
-		case GreetAction:
-			greeting := Greetings[rand.Intn(len(Greetings))]
-			text += fmt.Sprintf("%s <@%s> :smile:\n", greeting, ev.User)
-		case InternetOnFireAction:
-			text += fmt.Sprintf("%s\n", getSecInfo())
-		case ReminderAction:
-			text += fmt.Sprintf(
-				"%s\n",
-				scheduleReminder(ev, rtm),
-			)
-		default:
-		}
-	}
-	strings.Trim(text, "\n")
-	if len(actions) == 0 {
-		text = fmt.Sprintf(
-			"I'm not that smart <@%s> :white_frowning_face:, you can ask me:\n%s\n%s",
-			ev.User,
-			InternetOnFireFormat,
-			RemindMeFormat,
-		)
-	}
-	rtm.SendMessage(
-		rtm.NewOutgoingMessage(text, ev.Channel),
+func (c Connection) sendSlackMessage(text, chanID string) {
+	// chanID is either a channel or a group ID
+	c.RTM.SendMessage(
+		c.RTM.NewOutgoingMessage(text, chanID),
 	)
 }
 
@@ -215,10 +156,53 @@ func GuessActions(msg string) []int {
 	if strings.Contains(msg, "is internet on fire") {
 		actions = append(actions, InternetOnFireAction)
 	}
-
 	if strings.Contains(msg, "remind me to") {
 		actions = append(actions, ReminderAction)
 	}
-	stracer.Traceln(actions)
+	if strings.Contains(msg, "remind me to") {
+		actions = append(actions, ReminderAction)
+	}
 	return actions
+}
+
+// ServeRTM deals with realtime messages from Slack.
+// It is indended to tun in its own goroutine.
+func ServeRTM(rtm *slack.RTM) {
+	conn := Connection{SlackInfo: nil, RTM: rtm}
+	for {
+		select {
+		case msg := <-rtm.IncomingEvents:
+			switch ev := msg.Data.(type) {
+			case *slack.ConnectedEvent:
+				conn.SlackInfo = ev.Info
+
+			case *slack.MessageEvent:
+				stracer.PrettyStruct("Message", ev)
+				// from humans (and bots?)
+				conn.ParseMessage(ev)
+
+			case *slack.PresenceChangeEvent:
+				//stracer.Tracef("Presence Change: %v\n", ev)
+
+			case *slack.LatencyReport:
+				stracer.Tracef("Current latency: %v\n", ev.Value)
+
+			case *slack.RTMError:
+				ErrorLogger.Println(ev.Error())
+
+			case *slack.InvalidAuthEvent:
+				ErrorLogger.Println("Invalid credentials")
+				break
+
+			case *GHPushEvent:
+				conn.SendPushMessage(ev)
+
+			case *MessageEvent:
+				conn.SendMessage(ev)
+
+			default:
+				stracer.PrettyStruct("unknown event:", ev)
+			}
+		}
+	}
 }
