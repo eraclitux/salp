@@ -80,6 +80,10 @@ func main() {
 			GenericMessageHandler(rtm.IncomingEvents),
 		),
 	)
+	http.HandleFunc(
+		"/new-relic",
+		NewRelicHandler(rtm.IncomingEvents),
+	)
 	addrString := fmt.Sprintf("%s:%s", conf.Httpaddress, conf.Httpport)
 	InfoLogger.Println("start listening on:", addrString)
 	if err := http.ListenAndServe(addrString, nil); err != nil {

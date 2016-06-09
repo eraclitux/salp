@@ -85,6 +85,17 @@ func (c Connection) SendMessage(message *MessageEvent) {
 	c.toAllGroups(text)
 }
 
+func (c Connection) SendNewRelicMessage(message *NewRelicEvent) {
+	text := fmt.Sprintf(
+		"New Relic event, severity: `%s` on `%s`\n```%s```",
+		message.Severity,
+		message.Date,
+		message.Message,
+	)
+	c.toAllChannels(text)
+	c.toAllGroups(text)
+}
+
 // SendPushMessage sends push event data to all channels
 // and groups of which Salp is member.
 // BUG(eraclitux): discard non push messages
@@ -199,6 +210,9 @@ func ServeRTM(rtm *slack.RTM) {
 
 			case *MessageEvent:
 				conn.SendMessage(ev)
+
+			case *NewRelicEvent:
+				conn.SendNewRelicMessage(ev)
 
 			default:
 				stracer.PrettyStruct("unknown event:", ev)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/eraclitux/stracer"
@@ -35,6 +36,12 @@ type GHPushEvent struct {
 type MessageEvent struct {
 	Message string
 	Type    string
+}
+
+type NewRelicEvent struct {
+	Message  string
+	Severity string
+	Date     time.Time `json:"created_at"`
 }
 
 // GHWebhooksHandlerFunc deals with webhook events received from GitHub.
@@ -74,6 +81,24 @@ func GenericMessageHandler(c chan<- slack.RTMEvent) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var message MessageEvent
 		err := json.NewDecoder(r.Body).Decode(&message)
+		if err != nil {
+			ErrorLogger.Println("decoding json body:", err)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		// send to RTM channel...
+		c <- slack.RTMEvent{
+			Data: &message,
+		}
+	}
+}
+
+func NewRelicHandler(c chan<- slack.RTMEvent) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var message NewRelicEvent
+		reader := strings.NewReader(r.PostFormValue("alert"))
+		err := json.NewDecoder(reader).Decode(&message)
+		stracer.Traceln(message)
 		if err != nil {
 			ErrorLogger.Println("decoding json body:", err)
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
