@@ -58,6 +58,7 @@ func (c Connection) decodeAndExecuteAction(ev *slack.MessageEvent) {
 		case InternetOnFireAction:
 			text += fmt.Sprintf("%s\n", getSecInfo())
 		case ReminderAction:
+			stracer.Traceln("scheduling reminder...")
 			text += fmt.Sprintf(
 				"%s\n",
 				scheduleReminder(ev, c.RTM),
@@ -166,9 +167,6 @@ func GuessActions(msg string) []int {
 	}
 	if strings.Contains(msg, "is internet on fire") {
 		actions = append(actions, InternetOnFireAction)
-	}
-	if strings.Contains(msg, "remind me to") {
-		actions = append(actions, ReminderAction)
 	}
 	if strings.Contains(msg, "remind me to") {
 		actions = append(actions, ReminderAction)
