@@ -111,6 +111,20 @@ func NewRelicHandler(c chan<- slack.RTMEvent) http.HandlerFunc {
 	}
 }
 
+// StatusHandlerFunc is a read only endpoint
+// that returns aggregated data that Salp
+// raceives from different sources (NewRelic, GitHub etc.)
+func StatusHandlerFunc(w http.ResponseWriter, r *http.Request) {
+	generalStatus.mu.RLock()
+	defer generalStatus.mu.RUnlock()
+	err := json.NewEncoder(w).Encode(generalStatus)
+	if err != nil {
+		ErrorLogger.Println("encoding json body:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+}
+
 // MustAuth is a decorator that implements a simple token
 // authentication.
 func MustAuth(authToken string, fn http.HandlerFunc) http.HandlerFunc {

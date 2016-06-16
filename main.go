@@ -20,11 +20,39 @@ import (
 )
 
 type DaemonConf struct {
-	Httpport    string
-	Httpaddress string
-	SlackToken  string `cfgp:",Slack API token,"`
-	AuthToken   string `cfgp:",token to authorize http requests,"`
-	Version     bool   `cfgp:"v,show version and exit,"`
+	Httpport      string
+	Httpaddress   string
+	SlackToken    string `cfgp:",Slack API token,"`
+	NewRelicToken string `cfgp:"nr-token,NewRelic API token,"`
+	NewRelicAppID string `cfgp:"nr-id,NewRelic app ID,"`
+	AuthToken     string `cfgp:",token to authorize http requests,"`
+	Version       bool   `cfgp:"v,show version and exit,"`
+}
+
+type status struct {
+	Summary      string    `json:"summary"`
+	Apdex        float64   `json:"apdex"`
+	NRHealth     string    `json:"newrelic_health"`
+	LastNRReport time.Time `json:"last_newrelic_reported"`
+	mu           sync.RWMutex
+}
+
+func (s *status) updateNewRelicData(data NewRelicAppData) {
+	s.LastNRReport = data.LastReported
+	s.Apdex = data.Summary.Apdex
+	s.NRHealth = data.Health
+	s.Summary = s.Summarize()
+}
+
+func (s *status) Summarize() string {
+	return "Health: " + s.NRHealth
+}
+
+// generalStatus stores aggregated info that Salp
+// receives from different sources (NewRelic, GitHub etc.)
+var generalStatus = status{
+	Summary: "no data yet",
+	Apdex:   0,
 }
 
 var wg sync.WaitGroup
@@ -52,23 +80,29 @@ func main() {
 	badExitCode := false
 	SetupLoggers(os.Stdout, os.Stderr)
 
+	if conf.NewRelicToken != "" && conf.NewRelicAppID != "" {
+		go FetchNewRelic(conf.NewRelicToken, conf.NewRelicAppID)
+	}
+
 	api := slack.New(conf.SlackToken)
 	rtm := api.NewRTM()
-	go rtm.ManageConnection()
-
-	wg.Add(1)
-	go func() {
-		defer func() {
-			wg.Done()
-			if r := recover(); r != nil {
-				// TODO try a last message sending to Slack via REST
-				// user PostMessage
-				ErrorLogger.Println(r)
-			}
+	if conf.SlackToken != "" {
+		go rtm.ManageConnection()
+		wg.Add(1)
+		go func() {
+			defer func() {
+				wg.Done()
+				if r := recover(); r != nil {
+					// TODO try a last message sending to Slack via REST
+					// user PostMessage
+					ErrorLogger.Println(r)
+				}
+			}()
+			ServeRTM(rtm)
 		}()
-		ServeRTM(rtm)
-	}()
+	}
 
+	http.HandleFunc("/status", StatusHandlerFunc)
 	http.HandleFunc(
 		"/gh-webhooks",
 		GHWebhooksHandlerFunc(rtm.IncomingEvents),
@@ -92,6 +126,7 @@ func main() {
 	}
 
 	wg.Wait()
+	// FIXME send a message to RTM goroutine or deadlock
 	if badExitCode {
 		os.Exit(1)
 	}

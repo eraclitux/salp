@@ -69,6 +69,7 @@ func getSecInfo() string {
 	)
 }
 
+// FIXME only accept rtm.IncomingEvents chan as argument
 func scheduleReminder(ev *slack.MessageEvent, rtm *slack.RTM) string {
 	var toIndex, inIndex int
 	var thingToDo string
@@ -106,6 +107,8 @@ func scheduleReminder(ev *slack.MessageEvent, rtm *slack.RTM) string {
 	}
 	text := fmt.Sprintf("<@%s> remember to %s:robot_face:", ev.User, thingToDo)
 	// FIXME is rtm concurrency-safe?
+	// FIXME do not encole rtm, but on c := rtm.IncomingEvents
+	// and send a signal to main cicle
 	go func() {
 		time.Sleep(time.Duration(minutes) * time.Minute)
 		rtm.SendMessage(
