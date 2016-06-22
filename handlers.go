@@ -39,9 +39,10 @@ type MessageEvent struct {
 }
 
 type NewRelicEvent struct {
-	Message  string
-	Severity string
-	Date     time.Time `json:"created_at"`
+	Date             time.Time `json:"created_at"`
+	ShortDescription string    `json:"short_description"`
+	Message          string
+	Severity         string
 }
 
 // GHWebhooksHandlerFunc deals with webhook events received from GitHub.

@@ -88,10 +88,11 @@ func (c Connection) SendMessage(message *MessageEvent) {
 
 func (c Connection) SendNewRelicMessage(message *NewRelicEvent) {
 	text := fmt.Sprintf(
-		"New Relic event, severity: `%s` on `%s`\n```%s```",
+		"New Relic event, severity: `%s` on `%s`\n```%s```\n%s",
 		message.Severity,
 		message.Date,
 		message.Message,
+		message.ShortDescription,
 	)
 	c.toAllChannels(text)
 	c.toAllGroups(text)
